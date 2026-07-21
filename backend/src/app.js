@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 
 const healthRoutes = require("./routes/health.routes");
+const activitiesRoutes = require("./routes/activities.routes");
 
 const app = express();
 
@@ -16,5 +17,13 @@ app.get("/", (req, res) => {
 });
 
 app.use("/api/health", healthRoutes);
+app.use("/api/activities", activitiesRoutes);
+
+app.use((req, res) => {
+  res.status(404).json({
+    status: "error",
+    message: "Ruta no encontrada",
+  });
+});
 
 module.exports = app;
