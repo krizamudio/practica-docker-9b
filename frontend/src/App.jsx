@@ -1,122 +1,247 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import './App.css'
+import { useCallback, useEffect, useState } from "react";
+import ActivityForm from "./components/ActivityForm";
+import ActivityTable from "./components/ActivityTable";
+import SummaryCards from "./components/SummaryCards";
+import SystemStatus from "./components/SystemStatus";
+
+import {
+  createActivity,
+  deleteActivity,
+  getActivities,
+  getSystemHealth,
+  updateActivity,
+  updateActivityStatus,
+} from "./services/api";
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [activities, setActivities] = useState([]);
+  const [selectedActivity, setSelectedActivity] = useState(null);
+  const [health, setHealth] = useState(null);
+  const [loadingActivities, setLoadingActivities] = useState(true);
+  const [loadingHealth, setLoadingHealth] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [message, setMessage] = useState(null);
+
+  const showMessage = (type, text) => {
+    setMessage({ type, text });
+
+    window.setTimeout(() => {
+      setMessage(null);
+    }, 4000);
+  };
+
+  const loadActivities = useCallback(async () => {
+  try {
+    setLoadingActivities(true);
+
+    const response = await getActivities();
+
+    console.log("Respuesta de actividades:", response);
+
+    const activitiesData = Array.isArray(response)
+      ? response
+      : response.data;
+
+    setActivities(
+      Array.isArray(activitiesData) ? activitiesData : []
+    );
+  } catch (error) {
+    console.error("Error cargando actividades:", error);
+
+    showMessage(
+      "danger",
+      error.response?.data?.message ||
+        "No fue posible consultar las actividades."
+    );
+  } finally {
+    setLoadingActivities(false);
+  }
+}, []);
+
+  const loadHealth = useCallback(async () => {
+    try {
+      setLoadingHealth(true);
+
+      const response = await getSystemHealth();
+      setHealth(response);
+    } catch (error) {
+      console.error(error);
+
+      setHealth({
+        status: "error",
+        database: "disconnected",
+      });
+    } finally {
+      setLoadingHealth(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadActivities();
+    loadHealth();
+  }, [loadActivities, loadHealth]);
+
+  const handleSubmit = async (formData) => {
+    try {
+      setSubmitting(true);
+
+      if (selectedActivity) {
+        await updateActivity(selectedActivity.id, formData);
+        showMessage(
+          "success",
+          "Actividad actualizada correctamente."
+        );
+      } else {
+        await createActivity(formData);
+        showMessage(
+          "success",
+          "Actividad registrada correctamente."
+        );
+      }
+
+      setSelectedActivity(null);
+      await loadActivities();
+    } catch (error) {
+      console.error(error);
+
+      const apiErrors = error.response?.data?.errors;
+      const apiMessage = error.response?.data?.message;
+
+      showMessage(
+        "danger",
+        Array.isArray(apiErrors)
+          ? apiErrors.join(" ")
+          : apiMessage || "No fue posible guardar la actividad."
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleStatusChange = async (id, status) => {
+    try {
+      await updateActivityStatus(id, status);
+
+      setActivities((currentActivities) =>
+        currentActivities.map((activity) =>
+          activity.id === id
+            ? { ...activity, status }
+            : activity
+        )
+      );
+
+      showMessage("success", "Estado actualizado.");
+    } catch (error) {
+      console.error(error);
+      showMessage(
+        "danger",
+        "No fue posible actualizar el estado."
+      );
+
+      await loadActivities();
+    }
+  };
+
+  const handleDelete = async (activity) => {
+    const confirmed = window.confirm(
+      `¿Deseas eliminar la actividad "${activity.title}"?`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await deleteActivity(activity.id);
+
+      if (selectedActivity?.id === activity.id) {
+        setSelectedActivity(null);
+      }
+
+      showMessage(
+        "success",
+        "Actividad eliminada correctamente."
+      );
+
+      await loadActivities();
+    } catch (error) {
+      console.error(error);
+      showMessage(
+        "danger",
+        "No fue posible eliminar la actividad."
+      );
+    }
+  };
 
   return (
     <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
+      <header className="bg-dark text-white py-4 mb-4">
+        <div className="container">
+          <h1 className="h3 mb-1">TaskContainer</h1>
+          <p className="mb-0 text-white-50">
+            Gestor de actividades académicas
           </p>
         </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+      </header>
 
-      <div className="ticks"></div>
+      <main className="container pb-5">
+        <SystemStatus
+          health={health}
+          loading={loadingHealth}
+        />
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+        {message && (
+          <div
+            className={`alert alert-${message.type} alert-dismissible`}
+            role="alert"
+          >
+            {message.text}
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
+            <button
+              type="button"
+              className="btn-close"
+              aria-label="Cerrar"
+              onClick={() => setMessage(null)}
+            />
+          </div>
+        )}
+
+        <SummaryCards activities={activities} />
+
+        <ActivityForm
+          selectedActivity={selectedActivity}
+          onSubmit={handleSubmit}
+          onCancel={() => setSelectedActivity(null)}
+          submitting={submitting}
+        />
+
+        <section className="card shadow-sm">
+          <div className="card-header d-flex justify-content-between align-items-center">
+            <strong>Actividades registradas</strong>
+
+            <button
+              className="btn btn-sm btn-outline-secondary"
+              type="button"
+              onClick={loadActivities}
+              disabled={loadingActivities}
+            >
+              Actualizar
+            </button>
+          </div>
+
+          <div className="card-body">
+            <ActivityTable
+              activities={activities}
+              loading={loadingActivities}
+              onEdit={setSelectedActivity}
+              onDelete={handleDelete}
+              onStatusChange={handleStatusChange}
+            />
+          </div>
+        </section>
+      </main>
     </>
-  )
+  );
 }
 
-export default App
+export default App;
