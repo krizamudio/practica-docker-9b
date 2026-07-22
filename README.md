@@ -54,10 +54,55 @@ Volumen persistente
 
 ## Requisitos
 
-- Docker Desktop.
-- Docker Compose.
+- Git.
+- Docker Engine o Docker Desktop.
+- Docker Compose v2 (comando `docker compose`).
 - pnpm, únicamente para ejecución local.
 - Node.js, únicamente para ejecución local.
+
+## Despliegue desde un clon
+
+Clonar el repositorio y entrar al directorio:
+
+```bash
+git clone <URL_DEL_REPOSITORIO>
+cd taskcontainer
+```
+
+Crear el archivo de variables de entorno:
+
+En Linux o macOS:
+
+```bash
+cp .env.example .env
+```
+
+En PowerShell:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Antes de desplegar, editar `.env` y reemplazar `POSTGRES_PASSWORD`. En un servidor,
+también se pueden cambiar los puertos publicados si ya están ocupados.
+
+Construir las imágenes e iniciar los contenedores:
+
+```bash
+docker compose up --build -d
+docker compose ps
+```
+
+Los tres servicios deben aparecer como iniciados y `database` y `backend` deben
+alcanzar el estado `healthy`. La aplicación queda disponible en
+`http://localhost:8080`, o en `http://IP_O_DOMINIO:8080` si se despliega en otro
+equipo y el firewall permite el puerto configurado en `FRONTEND_PORT`.
+
+Para consultar errores durante el arranque:
+
+```bash
+docker compose logs --tail=100
+```
 
 ## Variables de entorno
 
@@ -189,12 +234,6 @@ Modo observación:
 
 ```bash
 pnpm test:watch
-```
-
-## Pruebas en Docker
-
-```bash
-docker compose --profile testing run --rm tests
 ```
 
 ## Endpoints

@@ -1,6 +1,10 @@
 services:
   database:
-    image: postgres:16-alpine
+    build:
+      context: ./database
+      dockerfile: Dockerfile
+
+    image: taskcontainer-database:latest
     container_name: taskcontainer-database
     restart: unless-stopped
 
@@ -14,7 +18,6 @@ services:
 
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
 
     healthcheck:
       test:
