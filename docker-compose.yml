@@ -1,59 +1,157 @@
+# Define los servicios que componen la aplicación:
+# base de datos PostgreSQL, API backend y frontend web.
 services:
+
+  # ==========================================================
+  # BASE DE DATOS POSTGRESQL
+  # ==========================================================
   database:
+
+    # Construye una imagen personalizada a partir del Dockerfile
+    # ubicado en la carpeta ./database.
+    #
+    # Ese Dockerfile utiliza PostgreSQL 16 sobre Alpine Linux
+    # y copia init.sql a /docker-entrypoint-initdb.d/init.sql.
     build:
       context: ./database
       dockerfile: Dockerfile
 
+    # Nombre de la imagen generada para la base de datos.
     image: taskcontainer-database:latest
+
+    # Nombre fijo asignado al contenedor.
     container_name: taskcontainer-database
+
+    # Reinicia el contenedor automáticamente si se detiene
+    # por un error o al reiniciar Docker.
+    #
+    # No se reiniciará si fue detenido manualmente.
     restart: unless-stopped
 
+    # Variables utilizadas por la imagen oficial de PostgreSQL
+    # para crear la base de datos, el usuario y su contraseña.
+    #
+    # Los valores se obtienen normalmente desde un archivo .env.
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
 
+    # Publica el puerto de PostgreSQL en la máquina anfitriona.
+    #
+    # POSTGRES_PORT corresponde al puerto externo.
+    # 5432 es el puerto interno utilizado por PostgreSQL.
     ports:
       - "${POSTGRES_PORT}:5432"
 
+    # Guarda los datos de PostgreSQL en un volumen persistente.
+    #
+    # Esto evita que la información se pierda cuando el contenedor
+    # se detiene, elimina o vuelve a crear.
+    #
+    # El archivo init.sql del Dockerfile únicamente se ejecutará
+    # cuando este volumen se inicialice por primera vez y esté vacío.
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+    # Comprueba si PostgreSQL está listo para aceptar conexiones.
+    #
+    # El backend no iniciará hasta que esta comprobación
+    # indique que la base de datos está saludable.
     healthcheck:
       test:
         [
           "CMD-SHELL",
           "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"
         ]
+
+      # Ejecuta la comprobación cada 5 segundos.
       interval: 5s
+
+      # Cada comprobación puede tardar como máximo 5 segundos.
       timeout: 5s
+
+      # Después de 10 intentos fallidos, el contenedor
+      # se marcará como unhealthy.
       retries: 10
 
+
+  # ==========================================================
+  # BACKEND / API
+  # ==========================================================
   backend:
+
+    # Construye el backend utilizando el Dockerfile
+    # ubicado en la carpeta ./backend.
+    #
+    # Ese Dockerfile:
+    # - utiliza Node.js 22 sobre Alpine Linux;
+    # - habilita Corepack para utilizar pnpm;
+    # - instala únicamente dependencias de producción;
+    # - copia la carpeta src;
+    # - inicia la aplicación con "pnpm start".
     build:
       context: ./backend
       dockerfile: Dockerfile
 
+    # Nombre fijo asignado al contenedor del backend.
     container_name: taskcontainer-backend
+
+    # Reinicia automáticamente el backend cuando sea necesario,
+    # excepto si el contenedor fue detenido manualmente.
     restart: unless-stopped
 
+    # Variables de entorno disponibles para la aplicación Node.js.
     environment:
+
+      # Puerto interno en el que escucha la API.
+      # Coincide con ENV PORT=3000 y EXPOSE 3000
+      # definidos en el Dockerfile del backend.
       PORT: 3000
+
+      # Nombre del servicio PostgreSQL dentro de la red
+      # interna creada automáticamente por Docker Compose.
+      #
+      # No se utiliza localhost porque la base de datos
+      # se ejecuta en otro contenedor.
       DB_HOST: database
+
+      # Puerto interno de PostgreSQL.
+      # Entre contenedores se utiliza directamente el puerto 5432.
       DB_PORT: 5432
+
+      # Nombre y credenciales de conexión a PostgreSQL.
       DB_NAME: ${POSTGRES_DB}
       DB_USER: ${POSTGRES_USER}
       DB_PASSWORD: ${POSTGRES_PASSWORD}
+
+      # Versión de la aplicación proporcionada desde el archivo .env.
       APP_VERSION: ${APP_VERSION}
+
+      # Ejecuta Node.js en modo producción.
+      # También está definido en el Dockerfile del backend.
       NODE_ENV: production
 
+    # Publica la API en la máquina anfitriona.
+    #
+    # BACKEND_PORT es el puerto externo configurable.
+    # 3000 es el puerto interno utilizado por la aplicación Node.js.
     ports:
       - "${BACKEND_PORT}:3000"
 
+    # Indica que el backend depende de PostgreSQL.
+    #
+    # El contenedor no iniciará hasta que el healthcheck
+    # de database indique que PostgreSQL está saludable.
     depends_on:
       database:
         condition: service_healthy
 
+    # Comprueba que el endpoint de salud de la API responda
+    # con un código HTTP exitoso.
+    #
+    # Se utiliza fetch, disponible de forma nativa en Node.js 22,
+    # que es la versión utilizada por el Dockerfile del backend.
     healthcheck:
       test:
         [
@@ -62,27 +160,79 @@ services:
           "-e",
           "fetch('http://localhost:3000/api/health').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))"
         ]
+
+      # Ejecuta la comprobación cada 10 segundos.
       interval: 10s
+
+      # Cada comprobación tiene un límite de 5 segundos.
       timeout: 5s
+
+      # Después de 5 intentos fallidos, el backend
+      # se marcará como unhealthy.
       retries: 5
+
+      # Concede 10 segundos iniciales para que la aplicación
+      # termine de arrancar antes de contar los errores.
       start_period: 10s
 
+
+  # ==========================================================
+  # FRONTEND WEB
+  # ==========================================================
   frontend:
+
+    # Construye el frontend utilizando el Dockerfile
+    # ubicado en la carpeta ./frontend.
+    #
+    # El Dockerfile utiliza una construcción multietapa:
+    #
+    # 1. Node.js 22 y pnpm compilan la aplicación Vite.
+    # 2. Nginx 1.27 sirve los archivos generados en /app/dist.
     build:
       context: ./frontend
       dockerfile: Dockerfile
+
+      # Argumento disponible durante la construcción de la imagen.
+      #
+      # Vite incorpora VITE_API_URL en los archivos JavaScript
+      # durante la ejecución de "pnpm build".
+      #
+      # Al utilizar /api, el frontend realiza sus peticiones
+      # mediante una ruta relativa del mismo dominio.
       args:
         VITE_API_URL: /api
 
+    # Nombre fijo asignado al contenedor del frontend.
     container_name: taskcontainer-frontend
+
+    # Reinicia automáticamente el servidor Nginx,
+    # excepto si fue detenido manualmente.
     restart: unless-stopped
 
+    # Publica el servidor web Nginx.
+    #
+    # FRONTEND_PORT es el puerto externo configurable.
+    # 80 es el puerto interno expuesto por el Dockerfile.
     ports:
       - "${FRONTEND_PORT}:80"
 
+    # El frontend depende del backend.
+    #
+    # Nginx no iniciará hasta que el endpoint /api/health
+    # del backend responda correctamente.
     depends_on:
       backend:
         condition: service_healthy
 
+
+# ==========================================================
+# VOLÚMENES PERSISTENTES
+# ==========================================================
 volumes:
+
+  # Volumen administrado por Docker para conservar
+  # los archivos de PostgreSQL.
+  #
+  # Mientras este volumen exista, la base de datos conservará
+  # sus datos y el archivo init.sql no volverá a ejecutarse.
   postgres_data:
