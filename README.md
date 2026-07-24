@@ -24,22 +24,7 @@ Demostrar la construcción, comunicación y despliegue de una aplicación web co
 
 ## Arquitectura
 
-```text
-Navegador
-    |
-    v
-Frontend React + Nginx
-    |
-    | /api
-    v
-Backend Node.js + Express
-    |
-    v
-PostgreSQL
-    |
-    v
-Volumen persistente
-```
+![Arquitectura de la aplicación](docs/images/arquitectura_flujo.png)
 
 ## Funcionalidades
 
